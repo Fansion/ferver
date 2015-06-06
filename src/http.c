@@ -45,10 +45,10 @@ void read_requesthdrs(rio_t *rio)
 
 void parse_uri(char *uri, char *filename, char *querystring)
 {
+    querystring = querystring;
     strcpy(filename, ROOT);
     strcat(filename, uri);
 
-    char *last_comp = rindex(filename, '/');
     char *last_dot = rindex(filename, '.');
 
     if (last_dot == NULL && filename[strlen(filename) - 1] != '/') {
@@ -87,12 +87,12 @@ void serve_static(int fd, char *filename, int filesize)
     sprintf(header, "%sContent-type: %s\r\n\r\n", header, file_type);
 
     n = rio_writen(fd, header, strlen(header));
-    check(n == strlen(header), "rio_writen error");
-
+    check(n == (ssize_t)strlen(header), "rio_writen error");
+    // use sendfile
     int srcfd = open(filename, O_RDONLY, 0);
     check(srcfd > 2, "open error");
     char *srcaddr = mmap(NULL, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-    check(srcaddr > 0, "mmap error");
+    check(srcaddr == 0, "mmap error");
     close(srcfd);
 
     n = rio_writen(fd, srcaddr, filesize);
@@ -103,7 +103,6 @@ void serve_static(int fd, char *filename, int filesize)
 
 void do_request(int fd)
 {
-    int rc;
     rio_t rio;
     char method[SHORTLINE], uri[SHORTLINE], version[SHORTLINE];
     char buf[MAXLINE];

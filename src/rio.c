@@ -77,7 +77,7 @@ static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
             rp->rio_bufptr = rp->rio_buf; /* reset buffer ptr */
     }
     cnt = n;
-    if (rp->rio_cnt < n)
+    if (rp->rio_cnt < (ssize_t)n)
         cnt = rp->rio_cnt;
     memcpy(usrbuf, rp->rio_bufptr, cnt);
     rp->rio_bufptr += cnt;
@@ -136,14 +136,14 @@ ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
     int n, rc;
     char c, *bufp = (char *)usrbuf;
 
-    for (n = 1; n < maxlen; ++n)
+    for (n = 1; n < (ssize_t)maxlen; ++n)
     {
         if ((rc = rio_read(rp, &c, 1)) == 1) {
             *bufp++ = c;
-            if(c == '\n')
+            if (c == '\n')
                 break;
         } else if (rc == 0) {
-            if (n == 1){
+            if (n == 1) {
                 // return and close fd;
                 return 0; /* EOF, no data read */
             } else
@@ -152,4 +152,6 @@ ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
             return -1;    /* error */
         }
     }
+    *bufp = 0;
+    return n;
 }

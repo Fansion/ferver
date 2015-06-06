@@ -1,7 +1,7 @@
 all: ferver
 
 ferver: ferver.c
-	gcc -o ferver ferver.c util.h util.c http.h http.c rio.h rio.c
+	gcc -W -Wall -o ferver ferver.c util.c http.c rio.c epoll.c
 
 clean:
 	rm ferver
