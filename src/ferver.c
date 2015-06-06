@@ -41,6 +41,7 @@ int main()
                     int infd = accept(listenfd, (struct sockaddr *)&clientaddr, &inlen);
                     if (infd == -1) {
                         if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+                            log_info("no more resource temporarily unavailable");
                             break;
                         } else {
                             log_err("accept");

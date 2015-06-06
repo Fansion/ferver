@@ -92,7 +92,7 @@ void serve_static(int fd, char *filename, int filesize)
     int srcfd = open(filename, O_RDONLY, 0);
     check(srcfd > 2, "open error");
     char *srcaddr = mmap(NULL, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-    check(srcaddr == 0, "mmap error");
+    check(srcaddr != 0, "mmap error");
     close(srcfd);
 
     n = rio_writen(fd, srcaddr, filesize);
