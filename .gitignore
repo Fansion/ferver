@@ -2,3 +2,5 @@
 *.log
 *.o
 notes
+src/fever
+src/makefile
