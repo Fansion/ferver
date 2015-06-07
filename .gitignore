@@ -4,3 +4,5 @@
 notes
 src/fever
 src/makefile
+tests/makefile
+tests/threadpool_test
