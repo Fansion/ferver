@@ -74,7 +74,7 @@ static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
             if (errno != EINTR)
                 /* interrupted by sig handler return */
                 return -1;
-        } else if (rp->rio_cnt == 0)  /* EOF */
+        } else if (rp->rio_cnt == 0)  /* EOF, zero indicates end of file, close tabs, close clients*/
             return 0;
         else
             rp->rio_bufptr = rp->rio_buf; /* reset buffer ptr */
@@ -147,8 +147,7 @@ ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
                 break;
         } else if (rc == 0) {
             if (n == 1) {
-                // return and close fd;
-                return 0; /* EOF, no data read */
+                return 0; /* EOF, no data read, return and close fd */
             } else
                 break;    /* EOF, some data was read */
         } else if (rc == -EAGAIN) {

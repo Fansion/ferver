@@ -67,8 +67,10 @@ static void *threadpool_worker(void *arg)
         pthread_mutex_lock(&(pool->lock));
         /*  Wait on condition variable, check for spurious wakeups. */
         while (pool->queue_size == 0) {
+            log_info("%08x goto sleep", (int)pthread_self());
             pthread_cond_wait(&(pool->cond), &(pool->lock));
         }
+        log_info("%08x wake up", (int)pthread_self());
         // 处理空头部的下一个节点
         task = pool->head->next;
         if (task == NULL)
@@ -80,6 +82,7 @@ static void *threadpool_worker(void *arg)
         pool->queue_size--;
         pthread_mutex_unlock(&(pool->lock));
         (*(task->func))(task->arg);
+        log_info("%08x complete its job", (int)pthread_self());
         free(task);
     }
     pthread_mutex_unlock(&(pool->lock));

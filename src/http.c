@@ -38,14 +38,24 @@ void read_requesthdrs(rio_t *rio)
     int rc;
     char buf[MAXLINE];
     rc = rio_readlineb(rio, buf, MAXLINE);
-    check((rc >= 0 || rc == -EAGAIN), "read request line, rc should >= 0");
-    if (rc == -EAGAIN)  // 当数据读完之后需要break跳出循环
+    if (rc == 0)
+    {
+        log_info("ready to close fd %d", rio->rio_fd);
+        close(rio->rio_fd);
         return;
+    }
+    // 这儿为什么要检查rc == -EAGAIN???
+    check((rc > 0 || rc == -EAGAIN), "read request line, rc > 0 || rc == -EAGAIN");
     while (strcmp(buf, "\r\n")) {
         // log_info("%s", buf);
-        check((rc >= 0 || rc == -EAGAIN), "read request line, rc should >= 0");
-        if (rc == -EAGAIN)  // 当数据读完之后需要break跳出循环
-            return;
+        rc = rio_readlineb(rio, buf, MAXLINE);
+        if (rc == 0)
+        {
+            log_info("ready to close fd %d", rio->rio_fd);
+            close(rio->rio_fd);
+            break;
+        }
+        check((rc > 0 || rc == -EAGAIN), "read request line, rc > 0 || rc == -EAGAIN");
     }
 }
 
@@ -122,13 +132,22 @@ void do_request(void *infd)
     for (;;) // reuse tcp connections
     {
         rc = rio_readlineb(&rio, buf, MAXLINE);
-        check((rc >= 0 || rc == -EAGAIN), "read request line, rc should >= 0");
+        if (rc == 0)
+        {
+            log_info("ready to close fd %d", fd);
+            close(fd);
+            break;
+        }
         if (rc == -EAGAIN)  // 当数据读完之后需要break跳出循环
             break;
+        check((rc > 0), "read request line, rc should > 0");
         sscanf(buf, "%s %s %s", method, uri, version);  // if buf is empty, method donot change
         log_info("request %s from fd %d", uri, fd);
         if (strcasecmp(method, "GET")) {
             log_err("req line = %s", buf);
+            log_err("method = %s", method);
+            log_err("buf = %s", buf);
+            log_err("rc = %d", rc);
             do_error(fd, method, "501", "Not Implemented", "ferver doesn't support");
             return;
         }
@@ -145,6 +164,7 @@ void do_request(void *infd)
             return;
         }
         serve_static(fd, filename, sbuf.st_size);
+        log_info("serve_static suc");
     }
 }
 
