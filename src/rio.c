@@ -68,6 +68,9 @@ static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
     {
         rp->rio_cnt = read(rp->rio_fd, rp->rio_buf, sizeof(rp->rio_buf));
         if (rp->rio_cnt < 0) {
+            if (errno == EAGAIN)   // 数据读完了要阻塞
+                /* we have read all the data */
+                return -EAGAIN;
             if (errno != EINTR)
                 /* interrupted by sig handler return */
                 return -1;
@@ -148,6 +151,9 @@ ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
                 return 0; /* EOF, no data read */
             } else
                 break;    /* EOF, some data was read */
+        } else if (rc == -EAGAIN) {
+            // read next time
+            return rc;
         } else {
             return -1;    /* error */
         }

@@ -20,7 +20,7 @@ void parse_uri(char *uri, char *filename, char *querystring);
 const char* get_file_type(const char *type);
 void serve_static(int fd, char *filename, int filesize);
 
-void do_request(int fd);
+void do_request(void *infd);
 void do_error(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
 
 #endif

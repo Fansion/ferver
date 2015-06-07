@@ -2,7 +2,7 @@
 *.log
 *.o
 notes
-src/fever
+src/ferver
 src/makefile
 tests/makefile
 tests/threadpool_test

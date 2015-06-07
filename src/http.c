@@ -35,11 +35,17 @@ void read_requesthdrs(rio_t *rio)
 {
     check(rio != NULL, "rio==NULL");
 
+    int rc;
     char buf[MAXLINE];
-    rio_readlineb(rio, buf, MAXLINE);
+    rc = rio_readlineb(rio, buf, MAXLINE);
+    check((rc >= 0 || rc == -EAGAIN), "read request line, rc should >= 0");
+    if (rc == -EAGAIN)  // 当数据读完之后需要break跳出循环
+        return;
     while (strcmp(buf, "\r\n")) {
-        log_info("%s", buf);
-        rio_readlineb(rio, buf, MAXLINE);
+        // log_info("%s", buf);
+        check((rc >= 0 || rc == -EAGAIN), "read request line, rc should >= 0");
+        if (rc == -EAGAIN)  // 当数据读完之后需要break跳出循环
+            return;
     }
 }
 
@@ -81,10 +87,11 @@ void serve_static(int fd, char *filename, int filesize)
     const char *dot_pos = rindex(filename, '.');
     file_type = get_file_type(dot_pos);
 
-    sprintf(header, "HTTP/1.0 200 OK\r\n");
+    sprintf(header, "HTTP/1.1 200 OK\r\n");
     sprintf(header, "%sServer: ferver\r\n", header);
-    sprintf(header, "%sContent-length: %d\r\n", header, filesize);
-    sprintf(header, "%sContent-type: %s\r\n\r\n", header, file_type);
+    sprintf(header, "%sContent-type: %s\r\n", header, file_type);
+    sprintf(header, "%sConnection: keep-alive\r\n", header);
+    sprintf(header, "%sContent-length: %d\r\n\r\n", header, filesize);
 
     n = rio_writen(fd, header, strlen(header));
     check(n == (ssize_t)strlen(header), "rio_writen error");
@@ -101,8 +108,10 @@ void serve_static(int fd, char *filename, int filesize)
     munmap(srcaddr, filesize);
 }
 
-void do_request(int fd)
+void do_request(void *infd)
 {
+    int fd = (int)infd;
+    int rc;
     rio_t rio;
     char method[SHORTLINE], uri[SHORTLINE], version[SHORTLINE];
     char buf[MAXLINE];
@@ -110,28 +119,33 @@ void do_request(int fd)
     struct stat sbuf;
 
     rio_readinitb(&rio, fd);
-    rio_readlineb(&rio, buf, MAXLINE);
+    for (;;) // reuse tcp connections
+    {
+        rc = rio_readlineb(&rio, buf, MAXLINE);
+        check((rc >= 0 || rc == -EAGAIN), "read request line, rc should >= 0");
+        if (rc == -EAGAIN)  // 当数据读完之后需要break跳出循环
+            break;
+        sscanf(buf, "%s %s %s", method, uri, version);  // if buf is empty, method donot change
+        log_info("request %s from fd %d", uri, fd);
+        if (strcasecmp(method, "GET")) {
+            log_err("req line = %s", buf);
+            do_error(fd, method, "501", "Not Implemented", "ferver doesn't support");
+            return;
+        }
+        read_requesthdrs(&rio);
+        parse_uri(uri, filename, NULL);
 
-    sscanf(buf, "%s %s %s", method, uri, version);
-    log_info("req line = %s", buf);
+        if (stat(filename, &sbuf) < 0) {
+            do_error(fd, filename, "404", "Not Found", "ferver can't find the file");
+            return;
+        }
 
-    if (strcasecmp(method, "GET")) {
-        do_error(fd, method, "501", "Not Implemented", "ferver doesn't support");
-        return;
+        if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
+            do_error(fd, filename, "403", "Forbidden", "ferver can't read the file");
+            return;
+        }
+        serve_static(fd, filename, sbuf.st_size);
     }
-    read_requesthdrs(&rio);
-    parse_uri(uri, filename, NULL);
-
-    if (stat(filename, &sbuf) < 0) {
-        do_error(fd, filename, "404", "Not Found", "ferver can't find the file");
-        return;
-    }
-
-    if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
-        do_error(fd, filename, "403", "Forbidden", "ferver can't read the file");
-        return;
-    }
-    serve_static(fd, filename, sbuf.st_size);
 }
 
 void do_error(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg)
@@ -146,8 +160,9 @@ void do_error(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg)
     sprintf(header, "HTTP/1.1 %s %s\r\n", errnum, shortmsg);
     sprintf(header, "%sServer: ferver\r\n", header);
     sprintf(header, "%sContent-type: text/html\r\n", header);
-    sprintf(header, "%sConnection: close\r\n", header);
+    sprintf(header, "%sConnection: keep-alive\r\n", header);
     sprintf(header, "%sContent-length: %d\r\n\r\n", header, (int)strlen(body));
+    log_info("header  = \n %s\n", header);
     rio_writen(fd, header, strlen(header));
     rio_writen(fd, body, strlen(body));
     log_info("leave do_error");
