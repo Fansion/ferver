@@ -6,21 +6,19 @@
 #endif
 /*liste head, refer to linux kernel implementation*/
 
-struct list_head {
+typedef struct list_head {
     struct list_head *pre, *next;
-};
-
-typedef struct list_head list_head;
+} list_head;
 
 #define INIT_LIST_HEAD(ptr) do {                        \
-    struct list_head *_ptr = (struct list_head *)ptr;   \
+    list_head *_ptr = (list_head *)ptr;   \
     (_ptr)->next = (_ptr); (_ptr)->pre = (_ptr);        \
 } while (0)
 
 /*
  * Insert a new entry to two consecutive entries
  */
-static inline void __list_add(struct list_head *_new, struct list_head *pre, struct list_head *next)
+static inline void __list_add(list_head *_new, list_head *pre, list_head *next)
 {
     _new->next = next;
     next->pre = _new;
@@ -29,17 +27,17 @@ static inline void __list_add(struct list_head *_new, struct list_head *pre, str
 };
 
 /*
- * insert before head
+ * insert after head
  */
-static inline void list_add(struct list_head *_new, struct list_head *head)
+static inline void list_add(list_head *_new, list_head *head)
 {
     __list_add(_new, head, head->next);
 }
 
 /*
- * insert after tail, to be modifeid
+ * to be modifeid
  */
-static inline void list_add_tail(struct list_head *_new, struct list_head *head)
+static inline void list_add_tail(list_head *_new, list_head *head)
 {
     __list_add(_new, head, head->next);
 }
@@ -48,22 +46,25 @@ static inline void list_add_tail(struct list_head *_new, struct list_head *head)
  * delete an entry of two consecutive entries
  * actually combine two list_head
  */
-static inline void __list_del(struct list_head *pre, struct list_head *next)
+static inline void __list_del(list_head *pre, list_head *next)
 {
     pre->next = next;
     next->pre = pre;
 }
 
-static inline void list_del(struct list_head *entry)
+#include <stdio.h>
+#include <stdlib.h>
+static inline void list_del(list_head *entry)
 {
     __list_del(entry->pre, entry->next);
-    entry->next = entry->pre = NULL;
+    // here should free entry, but for the use of function del_node in list_test.c free is commented
+    // free(entry);
 }
 
 /*
  * check whether the list is empty
  */
-static inline int list_empty(struct list_head *head)
+static inline int list_empty(list_head *head)
 {
     return (head->next == head) && (head->pre == head);
 }

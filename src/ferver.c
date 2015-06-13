@@ -59,8 +59,8 @@ int main()
                 continue;
             }
             if (listenfd == fd) {
-                while (1) {
-                    log_info("## ferver(fd %d) ready to accept", listenfd);
+                // while (1) {
+                    log_info("# ferver(fd %d) ready to accept", listenfd);
                     fflush(stdout);
                     int infd = accept(listenfd, (struct sockaddr *)&clientaddr, &inlen);
                     if (infd == -1) {
@@ -81,8 +81,8 @@ int main()
                     event.data.ptr = (void *)r;
                     event.events = EPOLLIN | EPOLLET;
                     fv_epoll_add(epfd, infd, &event);
-                }
-                log_info("## end accept");
+                // }
+                log_info("# end accept");
                 fflush(stdout);
             } else {
                 /*

@@ -1,6 +1,5 @@
 #include "http.h"
 #include "dbg.h"
-#include "rio.h"
 #include <sys/stat.h>
 
 #define MAXLINE 8192
@@ -39,35 +38,6 @@ mime_type_t ferver_mime[] =
     {NULL , "text/plain"}
 };
 
-/*读取并忽略报头*/
-void read_requesthdrs(rio_t *rio)
-{
-    check(rio != NULL, "rio==NULL");
-
-    int rc;
-    char buf[MAXLINE];
-    rc = rio_readlineb(rio, buf, MAXLINE);
-    if (rc == 0)
-    {
-        log_info("ready to close fd %d", rio->rio_fd);
-        close(rio->rio_fd);
-        return;
-    }
-    // 这儿为什么要检查rc == -EAGAIN???
-    check((rc > 0 || rc == -EAGAIN), "read request line, rc > 0 || rc == -EAGAIN");
-    while (strcmp(buf, "\r\n")) {
-        // log_info("%s", buf);
-        rc = rio_readlineb(rio, buf, MAXLINE);
-        if (rc == 0)
-        {
-            log_info("ready to close fd %d", rio->rio_fd);
-            close(rio->rio_fd);
-            break;
-        }
-        check((rc > 0 || rc == -EAGAIN), "read request line, rc > 0 || rc == -EAGAIN");
-    }
-}
-
 void parse_uri(char *uri, int uri_length,  char *filename, char *querystring)
 {
     querystring = querystring;
@@ -99,6 +69,7 @@ const char* get_file_type(const char *type)
 
 void serve_static(int fd, char *filename, int filesize)
 {
+    log_info("## ready to serve_static");
     log_info("filename = %s", filename);
     char header[MAXLINE];
     int n;
@@ -126,6 +97,7 @@ void serve_static(int fd, char *filename, int filesize)
     check(n == filesize, "rio_writen error");
 
     munmap(srcaddr, filesize);
+    log_info("## serve_static suc");
 }
 
 int fv_http_parse_request_line(fv_http_request_t *r)
@@ -150,7 +122,6 @@ int fv_http_parse_request_line(fv_http_request_t *r)
     } state;
     state = r->state;
     check(state == 0, "state should be 0");
-    log_info("enter fv_http_parse_request_line, start addr=%d, last addr=%d, head length=%d", (int)r->pos, (int)r->last, (int)(r->last-r->pos));
 
     for (p = r->pos; p < (u_char *)r->last; ++p)
     {
@@ -158,7 +129,6 @@ int fv_http_parse_request_line(fv_http_request_t *r)
         switch (state)
         {
         case sw_start:  /* HTTP methods: GET, HEAD, POST */
-            log_info("in state sw_start");
             r->request_start = p;
             if (ch == CR || ch == LF)
                 break;
@@ -365,58 +335,104 @@ int fv_http_parse_request_body(fv_http_request_t *r)
     u_char ch, *p;
     enum {
         sw_start = 0,
+        sw_key, // deal with line other than request line in the header
+        sw_spaces_before_colon,
+        sw_spaces_after_colon,
+        sw_value,
         sw_cr,
         sw_crlf,
         sw_crlfcr
     } state;
     state = r->state;
     check(state == 0, "state should be 0");
-    log_info("enter fv_http_parse_request_body,  start addr=%d, last addr=%d, body length=%d", (int)r->pos, (int)r->last, (int)(r->last-r->pos));
-    if (r->pos == r->last)       // empty body return directly
+    if (r->pos == r->last)      // empty body return directly
         return FV_OK;
+
+    fv_http_header_t *hd;       // save http header
     for (p = r->pos; p < (u_char *)r->last; ++p)
     {
         ch = *p;
         switch (state)
         {
         case sw_start:
-            switch (ch)
+            r->cur_header_key_start = p;
+            if (ch == CR || ch == LF) {
+                break;
+            }
+            state = sw_key;
+            break;
+        case sw_key:
+            if (ch == ' ')
             {
-                case CR:
-                    state = sw_cr;
-                    break;
-                default:
-                    break;
+                r->cur_header_key_end = p;
+                state = sw_spaces_before_colon;
+                break;
+            }
+            if (ch == ':')
+            {
+                r->cur_header_key_end = p;
+                state = sw_spaces_after_colon;
+                break;
+            }
+            break;
+        case sw_spaces_before_colon:
+            if (ch == ' ') {
+                break;
+            } else if(ch == ':') {
+                state = sw_spaces_after_colon;
+                break;
+            } else {
+                return FV_HTTP_PARSE_INVALID_HEADER;
+            }
+            break;
+        case sw_spaces_after_colon:
+            if (ch == ' ')
+                break;
+            state = sw_value;
+            r->cur_header_value_start = p;
+            break;
+        case sw_value:
+            if (ch == CR)
+            {
+                r->cur_header_value_end = p;
+                state = sw_cr;
+            }
+            if (ch == LF)
+            {
+                r->cur_header_value_end = p;
+                state = sw_crlf;
             }
             break;
         case sw_cr:
-            switch (ch)
-            {
-                case LF:
-                    state = sw_crlf;
-                    break;
-                default:
-                    return FV_HTTP_PARSE_INVALID_REQUEST;
+            if (ch == LF) {
+                state = sw_crlf;
+                // save the current http header line
+                hd = (fv_http_header_t *)malloc(sizeof(fv_http_header_t));
+                hd->key_start    = r->cur_header_key_start;
+                hd->key_end      = r->cur_header_key_end;
+                hd->value_start  = r->cur_header_value_start;
+                hd->value_end    = r->cur_header_value_end;
+                list_add(&hd->list, &r->list);
+                break;
+            } else {
+                return FV_HTTP_PARSE_INVALID_HEADER;
             }
             break;
         case sw_crlf:
-            switch (ch)
-            {
-                case CR:
-                    state = sw_crlfcr;
-                    break;
-                default:
-                    state = sw_start;
-                    break;
+            if (ch == CR) {
+                state = sw_crlfcr;
+            } else {
+                r->cur_header_key_start = p;
+                state = sw_key;     // find more header lines
             }
             break;
         case sw_crlfcr:
             switch (ch)
             {
-                case LF:
-                    goto done;
-                default:
-                    return FV_HTTP_PARSE_INVALID_REQUEST;
+            case LF:
+                goto done;
+            default:
+                return FV_HTTP_PARSE_INVALID_HEADER;
             }
             break;
         }
@@ -436,8 +452,30 @@ int fv_init_request_t(fv_http_request_t *r, int fd)
     r->fd = fd;
     r->pos = r->last = r->buf;
     r->state = 0;
+    INIT_LIST_HEAD(&r->list);
 
     return FV_OK;
+}
+
+void fv_http_handle_header(fv_http_request_t *r)
+{
+    list_head *pos;
+    fv_http_header_t *hd;
+    log_info("## header　begin");
+    list_for_each(pos, &r->list) {
+        hd = list_entry(pos, fv_http_header_t, list);
+        // log_info("hd=%d", (int)hd);
+        // handle
+        log_info("### %.*s:%.*s",
+                 (int)(hd->key_end - hd->key_start),
+                 (char *)hd->key_start,
+                 (int)(hd->value_end - hd->value_start),
+                 (char *)hd->value_start);
+        // delete it from original list
+        list_del(pos);
+        free(hd);
+    }
+    log_info("## header　end");
 }
 
 void do_request(void *ptr)
@@ -449,9 +487,9 @@ void do_request(void *ptr)
     struct stat sbuf;
     int n;
 
-    log_info("ready to serve client(fd %d)", fd);
     for (;;)
     {
+        log_info("# ready to serve client(fd %d)", fd);
         n = read(fd, r->last, (uint32_t)r->buf + MAX_BUF - (uint32_t)r->last);  // GET / HTTP/1.1 16bytes
         log_info("buffer remaining: %d", (uint32_t)r->buf + MAX_BUF - (uint32_t)r->last);
         // log_info("n = %d, errno = %d", n, errno);
@@ -469,26 +507,34 @@ void do_request(void *ptr)
         r->last += n;
         check((uint32_t)r->last <= (uint32_t)r->buf + MAX_BUF, "r->last shoule <= MAX_BUF");
 
-        log_info("ready to parse request line");
+        log_info("## ready to parse request line");
+        log_info("enter fv_http_parse_request_line, start addr=%d, last addr=%d, head length=%d", (int)r->pos, (int)r->last, (int)(r->last-r->pos));
         rc = fv_http_parse_request_line(r);
         if (rc == FV_AGAIN) {
             continue;
         } else if(rc != FV_OK) {
-            log_err("rc != FV_OK, ready to close fd %d", fd);
+            log_err("rc != FV_OK");
             goto err;
         }
+        log_info("request method: %.*s",(int)(r->method_end - r->request_start), (char *)r->request_start);
+        log_info("request uri: %.*s", (int)(r->uri_end - r->uri_start), (char *)r->uri_start);
+        log_info("## parse request line suc");
 
-        log_info("request method == %.*s",(int)(r->method_end - r->request_start), (char *)r->request_start);
-        log_info("request uri == %.*s", (int)(r->uri_end - r->uri_start), (char *)r->uri_start);
 
-        log_info("ready to parse request body");
-        rc  = fv_http_parse_request_body(r);
+        log_info("## ready to parse request body");
+        log_info("enter fv_http_parse_request_body,  start addr=%d, last addr=%d, body length=%d", (int)r->pos, (int)r->last, (int)(r->last - r->pos));
+        rc = fv_http_parse_request_body(r);
         if (rc == FV_AGAIN) {
             continue;
         } else if(rc != FV_OK) {
-            log_err("rc != FV_OK, ready to close fd %d", fd);
+            log_err("rc != FV_OK");
             goto err;
         }
+        log_info("## parse request body suc");
+
+        // handle http header
+        fv_http_handle_header(r);
+        check(list_empty(&(r->list)) == 1, "header list should be empty");
 
         parse_uri(r->uri_start, r->uri_end - r->uri_start, filename, NULL);
         if (stat(filename, &sbuf) < 0) {
@@ -501,10 +547,11 @@ void do_request(void *ptr)
             return;
         }
         serve_static(fd, filename, sbuf.st_size);
-        log_info("serve_static suc");
+        log_info("# serve client(fd %d) suc", fd);
     }
     return;  // reuse tcp connections
 err:
+    log_info("err when serve fd %d, ready to close", fd);
     close(fd);
 }
 
