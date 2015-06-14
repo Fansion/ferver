@@ -1,6 +1,7 @@
 #ifndef __HTTP_REQUEST_H__
 #define __HTTP_REQUEST_H__
 
+#include "http.h"
 #include <time.h>
 
 #define FV_AGAIN                    EAGAIN
@@ -21,6 +22,7 @@
 #define MAX_BUF                       8124
 
 typedef struct fv_http_request_s {
+    void *root;
     int fd;
     char buf[MAX_BUF];
     void *pos, *last;           // change from int pos, last;
@@ -67,7 +69,7 @@ typedef struct {
 
 void fv_http_handle_header(fv_http_request_t *r, fv_http_out_t *o);
 
-int fv_init_request_t(fv_http_request_t *r, int fd);
+int fv_init_request_t(fv_http_request_t *r, int fd, fv_conf_t *ct);
 int fv_free_request_t(fv_http_request_t *r);
 
 int fv_init_out_t(fv_http_out_t *o, int fd);

@@ -12,11 +12,12 @@ fv_http_header_handle_t fv_http_headers_in[] = {
     {"", fv_http_process_ignore}
 };
 
-int fv_init_request_t(fv_http_request_t *r, int fd)
+int fv_init_request_t(fv_http_request_t *r, int fd, fv_conf_t *ct)
 {
     r->fd = fd;
     r->pos = r->last = r->buf;
     r->state = 0;
+    r->root = ct->root;
     INIT_LIST_HEAD(&r->list);
     return FV_OK;
 }

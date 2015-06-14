@@ -13,6 +13,7 @@
 #include "list.h"
 
 #include "dbg.h"
+#include "util.h"
 #include "http_request.h"
 #include "http_parse.h"
 

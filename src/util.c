@@ -48,3 +48,49 @@ int make_socket_non_blocking(int fd)
     }
     return 0;
 }
+
+/*
+ *  从配置文件中读取相应的参数
+ */
+int read_conf(char *filename, fv_conf_t *cf, char *buf,  int len)
+{
+    FILE *fp = fopen(filename, "r");
+    if (!fp)
+    {
+        log_err("cannot open conf file: %s", filename);
+        return FV_CONF_ERROR;
+    }
+    char *delim_pos;
+    int line_len = 0, max_len = len;
+    char *cur_pos = buf;
+
+    while (fgets(cur_pos, max_len, fp))             // read a line
+    {
+        delim_pos = strstr(cur_pos, DELIM);
+        line_len = strlen(cur_pos);
+        // debug("read one line from conf: %s len=%d", cur_pos, line_len);
+        if (!delim_pos)
+        {
+            return FV_CONF_ERROR;
+        }
+        if (cur_pos[line_len - 1] == '\n')          // to get root without '\n'
+        {
+            cur_pos[line_len - 1] = '\0';
+        }
+        if (strncmp("root", cur_pos, 4) == 0)
+        {
+            cf->root = delim_pos + 1;
+        }
+        if (strncmp("port", cur_pos, 4) == 0)
+        {
+            cf->port = atoi(delim_pos + 1);
+        }
+        if (strncmp("thread_num", cur_pos, 10) == 0)
+        {
+            cf->thread_num = atoi(delim_pos + 1);
+        }
+        cur_pos += line_len;
+        max_len -= line_len;
+    }
+    return FV_CONF_OK;
+}
