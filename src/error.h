@@ -1,5 +1,5 @@
-#ifndef _ERROR_H__
-#define _ERROR_H__
+#ifndef __ERROR_H__
+#define __ERROR_H__
 
 void unix_error(char *msg)
 {

@@ -1,5 +1,5 @@
-#ifndef __FV_LIST_H
-#define __FV_LIST_H
+#ifndef __FV_LIST_H__
+#define __FV_LIST_H__
 
 #ifndef NULL
 #define NULL 0
@@ -52,8 +52,6 @@ static inline void __list_del(list_head *pre, list_head *next)
     next->pre = pre;
 }
 
-#include <stdio.h>
-#include <stdlib.h>
 static inline void list_del(list_head *entry)
 {
     __list_del(entry->pre, entry->next);

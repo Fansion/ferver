@@ -1,5 +1,5 @@
-#ifndef _UTIL_H
-#define _UTIL_H
+#ifndef __UTIL_H__
+#define __UTIL_H__
 
 #include <sys/socket.h>
 #include <sys/types.h>

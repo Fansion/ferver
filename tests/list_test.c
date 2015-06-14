@@ -1,8 +1,6 @@
 #include "list.h"
 #include "dbg.h"
 
-typedef struct list_head list_head;
-
 typedef struct {
     void *arg;
     list_head list;
@@ -26,8 +24,9 @@ void add_node(void *arg, list_head *head)
 
 void del_node(list_head *entry)
 {
-    list_del(entry);
+    list_del(entry);                                    // 删除当前结点
     st_struct *s = list_entry(entry, st_struct, list);
+    printf("del node%d\n", (int)s->arg1);
     free(s);
 }
 
@@ -35,9 +34,9 @@ void display(list_head *head)
 {
     list_head *pos;
     st_struct *et;
-    list_for_each(pos, head) {
-        et = list_entry(pos, st_struct, list);
-        printf("arg = %d\n", (int)et->arg1);
+    list_for_each(pos, head) {                          // 遍历双链表的每一个结点
+        et = list_entry(pos, st_struct, list);          // 将每一个结点强制转化成原有类型st_struct
+        printf("arg = %d\n", (int)et->arg1);            // 访问st_struct的其他属性
     }
 }
 
