@@ -166,6 +166,10 @@ int main(int argc, char *argv[])
             }
         }
     }
+    if (threadpool_destroy(tp, 1) < 0)
+    {
+        log_err("destroy threadpool failed");
+    }
 
     return 0;
 }

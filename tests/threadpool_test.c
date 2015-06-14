@@ -24,11 +24,13 @@ int main()
         check(rc == 0, "rc should be 0");
     }
 
-    if (threadpool_destroy(tp) < 0) {
-        log_err("destroy threadpool failed");
-    }
     // 主线程需要等待一段时间退出
     // 否则当顶层主线程退出时，子线程会隐式退出
     sleep(10);
+
+    if (threadpool_destroy(tp, 1))
+    {
+        log_err("destroy threadpool failed");
+    }
     return 0;
 }

@@ -1,5 +1,10 @@
 #include "threadpool.h"
 
+typedef enum {
+    immediate_shutdown = 1,
+    graceful_shutdown = 2
+} fv_threadpool_sd_t;
+
 static void *threadpool_worker(void *arg);
 
 fv_threadpool_t *threadpool_init(int thread_num)
@@ -14,6 +19,8 @@ fv_threadpool_t *threadpool_init(int thread_num)
     }
     pool->thread_count = 0;
     pool->queue_size = 0;
+    pool->shutdown = 0;
+    pool->started = 0;
     pool->threads = (pthread_t *)malloc(sizeof(pthread_t) * thread_num);
     /*此处保留一个空头部，便于插入删除操作*/
     pool->head = (fv_task_t *)malloc(sizeof(fv_task_t));
@@ -34,16 +41,17 @@ fv_threadpool_t *threadpool_init(int thread_num)
         goto err;
     }
 
-    int i, rc;
+    int i;
     for (i = 0; i < thread_num; ++i)
     {
-        rc = pthread_create(&(pool->threads[i]), NULL, threadpool_worker, (void *)pool);
-        if (rc != 0)
+        if (pthread_create(&(pool->threads[i]), NULL, threadpool_worker, (void *)pool) != 0)
         {
-            threadpool_destroy(pool);
+            threadpool_destroy(pool, 0);
             return NULL;
         }
+        log_info("thread: %08x started", (unsigned int)pool->threads[i]);
         pool->thread_count++;
+        pool->started++;
     }
     return pool;
 err:
@@ -66,25 +74,33 @@ static void *threadpool_worker(void *arg)
     while (1) {
         pthread_mutex_lock(&(pool->lock));
         /*  Wait on condition variable, check for spurious wakeups. */
-        while (pool->queue_size == 0) {
-            log_info("%08x goto sleep", (int)pthread_self());
+        while (pool->queue_size == 0 && !pool->shutdown) {
+            // log_info("%08x goto sleep", (int)pthread_self());
             pthread_cond_wait(&(pool->cond), &(pool->lock));
         }
-        log_info("%08x wake up", (int)pthread_self());
+        // log_info("%08x wake up", (int)pthread_self());
+        if (pool->shutdown == immediate_shutdown) {
+            pthread_mutex_unlock(&(pool->lock));
+            break;
+        } else if (pool->shutdown == graceful_shutdown && pool->queue_size == 0) {
+            pthread_mutex_unlock(&(pool->lock));
+            break;
+        }
         // 处理空头部的下一个节点
         task = pool->head->next;
         if (task == NULL)
         {
-            log_info("empty task list now");
+            // log_info("empty task list now");
             continue;
         }
         pool->head->next = task->next;
         pool->queue_size--;
         pthread_mutex_unlock(&(pool->lock));
         (*(task->func))(task->arg);
-        log_info("%08x complete its job", (int)pthread_self());
+        // log_info("%08x complete its job", (int)pthread_self());
         free(task);
     }
+    pool->started--;
     pthread_mutex_unlock(&(pool->lock));
     pthread_exit(NULL);
 }
@@ -92,16 +108,22 @@ static void *threadpool_worker(void *arg)
 
 int threadpool_add(fv_threadpool_t *pool, void (*func)(void *), void *arg)
 {
-    int rc;
+    int rc = 0, err = 0;
     if (pool == NULL || func == NULL)
     {
         log_err("pool == NULL || func == NULL");
-        return -1;
+        return fv_tp_invalid;
     }
     if (pthread_mutex_lock(&(pool->lock)) != 0)
     {
         log_err("pthread_mutex_lock");
-        return -1;
+        return fv_tp_lock_fail;
+    }
+
+    if (pool->shutdown)
+    {
+        err = fv_tp_already_shutdown;
+        goto out;
     }
 
     fv_task_t *task = (fv_task_t*)malloc(sizeof(fv_task_t));
@@ -116,31 +138,70 @@ int threadpool_add(fv_threadpool_t *pool, void (*func)(void *), void *arg)
     rc = pthread_cond_signal(&(pool->cond));
     check(rc == 0, "pthread_cond_signal");
 
+out:
     if (pthread_mutex_unlock(&(pool->lock)) != 0)
     {
         log_err("pthread_mutex_unlock");
-        return -1;
+        err = fv_tp_lock_fail;
     }
-    return 0;
+    return err;
 }
 
-int threadpool_destroy(fv_threadpool_t *pool)
+int threadpool_destroy(fv_threadpool_t *pool, int graceful)
 {
+    int err = 0;
     if (pool == NULL)
     {
         log_err("pool == NULL");
-        return -1;
+        return fv_tp_invalid;
     }
     // to set the showdown flag of pool and wake up all thread
-    return 0;
+    if (pthread_mutex_lock(&(pool->lock)) != 0)
+    {
+        return fv_tp_lock_fail;
+    }
+    do {
+        if (pool->shutdown)
+        {
+            err = fv_tp_already_shutdown;
+            break;
+        }
+        pool->shutdown = graceful ? graceful_shutdown : immediate_shutdown;
+        if (pthread_cond_broadcast(&(pool->cond)) != 0)
+        {
+            err = fv_tp_cond_broadcast;
+            break;
+        }
+        if (pthread_mutex_unlock(&(pool->lock)) != 0)
+        {
+            err = fv_tp_lock_fail;
+            break;
+        }
+        int i;
+        for (i = 0; i < pool->thread_count; ++i)
+        {
+            if (pthread_join(pool->threads[i], NULL) != 0)
+            {
+                err = fv_tp_thread_fail;
+            }
+            log_info("thread %08x exit", (unsigned int)pool->threads[i]);
+        }
+    } while (0);
+    if (!err)
+    {
+        pthread_mutex_destroy(&(pool->lock));
+        pthread_cond_destroy(&(pool->cond));
+        threadpool_free(pool);
+    }
+    return err;
 }
 
 int threadpool_free(fv_threadpool_t *pool)
 {
-    if (pool == NULL)
+    int err = 0;
+    if (pool == NULL || pool->started > 0)
     {
-        log_err("pool == NULL");
-        return -1;
+        return fv_tp_invalid;
     }
     if (pool->threads)
         free(pool->threads);
@@ -152,5 +213,5 @@ int threadpool_free(fv_threadpool_t *pool)
         free(pre);
     }
     free(pool);
-    return 0;
+    return err;
 }
