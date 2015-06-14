@@ -63,7 +63,7 @@ void fv_http_handle_header(fv_http_request_t *r, fv_http_out_t *o)
                 header_in++) {
             if (strncmp(hd->key_start, header_in->name, hd->key_end - hd->key_start) == 0)
             {
-                log_info("find match: %s", header_in->name);
+                debug("find match: %s", header_in->name);
                 (*(header_in->handler))(r, o, hd->value_start, hd->value_end - hd->value_start);
             }
         }

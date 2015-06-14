@@ -100,15 +100,12 @@ int threadpool_add(fv_threadpool_t *pool, void (*func)(void *), void *arg)
     }
     if (pthread_mutex_lock(&(pool->lock)) != 0)
     {
+        log_err("pthread_mutex_lock");
         return -1;
     }
 
     fv_task_t *task = (fv_task_t*)malloc(sizeof(fv_task_t));
-    if (task == NULL)
-    {
-        log_err("add task fail");
-        return -1;
-    }
+    // TODO: use a memory pool
     task->func = func;
     task->arg = arg;
     // 新节点作为空头部的下一个节点
@@ -121,6 +118,7 @@ int threadpool_add(fv_threadpool_t *pool, void (*func)(void *), void *arg)
 
     if (pthread_mutex_unlock(&(pool->lock)) != 0)
     {
+        log_err("pthread_mutex_unlock");
         return -1;
     }
     return 0;

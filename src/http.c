@@ -34,7 +34,7 @@ void parse_uri(char *uri, int uri_length,  char *filename, char *querystring)
     char *question_mark = index(uri, '?');
     int file_length;
     if (question_mark) {
-        file_length = (int)(question_mark -uri);
+        file_length = (int)(question_mark - uri);
     } else {
         file_length = uri_length;
     }
@@ -68,7 +68,7 @@ const char* get_file_type(const char *type)
 void serve_static(int fd, char *filename, int filesize, fv_http_out_t *out)
 {
     log_info("## ready to serve_static");
-    log_info("filename = %s", filename);
+    debug("filename = %s", filename);
     char header[MAXLINE];
     char buf[SHORTLINE];
     int n;
@@ -96,8 +96,8 @@ void serve_static(int fd, char *filename, int filesize, fv_http_out_t *out)
     sprintf(header, "%s\r\n", header);
 
     n = rio_writen(fd, header, strlen(header));
-    check(n == (ssize_t)strlen(header), "rio_writen error");
-    if (!out->modified) {
+    check(n == (ssize_t)strlen(header), "rio_writen error, errno = %d", errno);
+    if (!out->modified) {     // 内容没改动则只返回http头
         return;
     }
     // use sendfile
@@ -108,7 +108,7 @@ void serve_static(int fd, char *filename, int filesize, fv_http_out_t *out)
     close(srcfd);
 
     n = rio_writen(fd, srcaddr, filesize);
-    check(n == filesize, "rio_writen error");
+    check(n == filesize, "rio_writen error, errno = %d", errno);
 
     munmap(srcaddr, filesize);
     log_info("## serve_static suc");
@@ -141,35 +141,39 @@ void do_request(void *ptr)
     int rc;
     char filename[SHORTLINE];
     struct stat sbuf;
-    int n;
+    int n, tmp;
 
     for (;;)
     {
-        log_info("# ready to serve client(fd %d)", fd);
+        log_info("#--ready to serve client(fd %d)--", fd);
         n = read(fd, r->last, (uint32_t)r->buf + MAX_BUF - (uint32_t)r->last);  // GET / HTTP/1.1 16bytes
-        log_info("buffer remaining: %d", (uint32_t)r->buf + MAX_BUF - (uint32_t)r->last);
+        check((uint32_t)r->buf + MAX_BUF > (uint32_t)r->last, "(uint32_t)r->buf + MAX_BUF");
+        // log_info("buffer remaining: %d", (uint32_t)r->buf + MAX_BUF - (uint32_t)r->last);
         // log_info("n = %d, errno = %d", n, errno);
-        if (n == 0) {   // EOF
+        if (n == 0) {       // EOF
             log_info("read return 0, ready to close fd %d", fd);
-            goto err;
+            goto close;
         }
         if (n < 0) {
             if (errno != EAGAIN) {
-                log_err("read err");
+                log_err("read err, and errno = %d", errno);
                 goto err;
             }
-            break;      // errno == EAGAIN
+            goto close;     // errno == EAGAIN
         }
         r->last += n;
         check((uint32_t)r->last <= (uint32_t)r->buf + MAX_BUF, "r->last shoule <= MAX_BUF");
 
         log_info("## ready to parse request line");
-        log_info("enter fv_http_parse_request_line, start addr=%d, last addr=%d, head length=%d", (int)r->pos, (int)r->last, (int)(r->last - r->pos));
+        log_info("enter fv_http_parse_request_line, buf start addr=%d, last addr=%d", (int)r->pos, (int)r->last);
+        tmp = (int)r->pos;
         rc = fv_http_parse_request_line(r);
+        log_info("header length=%d", (int)r->pos-tmp);
+
         if (rc == FV_AGAIN) {
             continue;
         } else if (rc != FV_OK) {
-            log_err("rc != FV_OK");
+            log_err("rc != FV_OK, and errno = %d", errno);
             goto err;
         }
         log_info("request method: %.*s", (int)(r->method_end - r->request_start), (char *)r->request_start);
@@ -178,12 +182,15 @@ void do_request(void *ptr)
 
 
         log_info("## ready to parse request body");
-        log_info("enter fv_http_parse_request_body,  start addr=%d, last addr=%d, body length=%d", (int)r->pos, (int)r->last, (int)(r->last - r->pos));
+        log_info("enter fv_http_parse_request_body, buf start addr=%d, last addr=%d", (int)r->pos, (int)r->last);
+        tmp = (int)r->pos;
         rc = fv_http_parse_request_body(r);
+        log_info("body length=%d", (int)r->pos-tmp);
+
         if (rc == FV_AGAIN) {
             continue;
         } else if (rc != FV_OK) {
-            log_err("rc != FV_OK");
+            log_err("rc != FV_OK, and errno = %d", errno);
             goto err;
         }
         log_info("## parse request body suc");
@@ -195,12 +202,12 @@ void do_request(void *ptr)
         parse_uri(r->uri_start, r->uri_end - r->uri_start, filename, NULL);
         if (stat(filename, &sbuf) < 0) {
             do_error(fd, filename, "404", "Not Found", "ferver can't find the file");
-            return;
+            goto close;
         }
 
         if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
             do_error(fd, filename, "403", "Forbidden", "ferver can't read the file");
-            return;
+            goto close;
         }
 
         out->mtime = sbuf.st_mtime;
@@ -212,17 +219,20 @@ void do_request(void *ptr)
         }
 
         serve_static(fd, filename, sbuf.st_size, out);
-        log_info("# serve client(fd %d) suc", fd);
+        log_info("#--serve client(fd %d) suc--", fd);
 
-        fflush(stdout);
         if (!out->keep_alive) {
             log_info("when serve fd %d, request header has no keep_alive, ready to close", fd);
-            close(fd);
+            free(out);
+            goto close;
+        } else {
+            free(out);
         }
-        free(out);
     }
     return;  // reuse tcp connections
 err:
     log_info("err when serve fd %d, ready to close", fd);
+close:
     close(fd);
+log_info("#--serve client(fd %d) err--", fd);
 }
