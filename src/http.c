@@ -197,7 +197,7 @@ void do_request(void *ptr)
 
         fv_http_out_t *out = (fv_http_out_t*)malloc(sizeof(fv_http_out_t));
         rc = fv_init_out_t(out, fd);
-        check(rc == FV_OK, "zv_init_out_t");
+        check(rc == FV_OK, "fv_init_out_t");
 
         parse_uri(r->uri_start, r->uri_end - r->uri_start, filename, NULL);
         if (stat(filename, &sbuf) < 0) {
