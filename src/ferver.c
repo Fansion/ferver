@@ -1,20 +1,77 @@
 #include "http.h"
 #include "epoll.h"
 #include "threadpool.h"
+#include <getopt.h>
 
-#define CONF "ferver.conf"
+#define CONF            "ferver.conf"
+#define VERSION                 "0.0"
 
 extern struct epoll_event *events;
 
-int main()
+static const struct option long_options[] = {
+    {"help", no_argument, NULL, '?'},
+    {"version", no_argument, NULL, 'v'},
+    {"conf", required_argument, NULL, 'c'},
+    {NULL, 0, NULL, 0}
+};
+
+static void usage()
+{
+    fprintf(stderr,
+            "ferver [option]... \n"
+            " -c|--conf <config file> Specify configure, default ./ferver.conf\n"
+            " -?|-h|--help\n"
+            " -v|--version\n"
+            );
+}
+
+int main(int argc, char *argv[])
 {
     int rc;
+    int opt = 0, options_index = 0;
+    char *conf_file = CONF;
+    /*
+     *parse argv
+     */
+    if (argc == 1)
+    {
+        usage();
+        return 0;
+    }
+    while((opt = getopt_long(argc, argv, "vc:?h", long_options, &options_index)) != EOF)
+    {
+        switch(opt)
+        {
+            case 0:
+                break;
+            case 'c':
+                conf_file = optarg;
+                break;
+            case 'v':
+                printf("%s\n", VERSION);
+                return 0;
+            case ':':
+            case '?':
+            case 'h':
+                usage();
+                return 0;
+        }
+    }
+    debug("config file: %s", conf_file);
+    if (optind < argc) {
+        log_err("non-option ARGV-elements: ");
+        while (optind < argc)
+        {
+            log_err("%s ", argv[optind++]);
+        }
+        return 0;
+    }
     /*
      *read configure file
      */
     char conf_buf[BUFFLEN];
     fv_conf_t cf;
-    rc = read_conf(CONF, &cf, conf_buf, BUFFLEN);
+    rc = read_conf(conf_file, &cf, conf_buf, BUFFLEN);
     check(rc == FV_CONF_OK, "read conf err");
     log_info("root:%s", (char *)cf.root);
     log_info("port:%d", cf.port);

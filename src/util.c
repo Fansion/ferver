@@ -92,5 +92,6 @@ int read_conf(char *filename, fv_conf_t *cf, char *buf,  int len)
         cur_pos += line_len;
         max_len -= line_len;
     }
+    fclose(fp);
     return FV_CONF_OK;
 }
