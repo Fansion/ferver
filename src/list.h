@@ -4,8 +4,8 @@
 #ifndef NULL
 #define NULL 0
 #endif
-/*liste head, refer to linux kernel implementation*/
 
+/*liste head, refer to linux kernel implementation*/
 typedef struct list_head {
     struct list_head *pre, *next;
 } list_head;
@@ -27,7 +27,7 @@ static inline void __list_add(list_head *_new, list_head *pre, list_head *next)
 };
 
 /*
- * insert after head
+ * insert at beginning after head node
  */
 static inline void list_add(list_head *_new, list_head *head)
 {

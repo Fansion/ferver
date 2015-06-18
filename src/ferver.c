@@ -89,14 +89,14 @@ int main(int argc, char *argv[])
         log_err("install signal handler for SIGPIPE failure");
         return 0;
     }
-    /*
-     *initialize listening socket
-     */
     int listenfd;
     struct sockaddr_in clientaddr;
     // initialize clientaddr and inlen to solve "accept Invalid argument" bug
     socklen_t inlen = 1;
     memset(&clientaddr, 0, sizeof(struct sockaddr_in));
+    /*
+     *initialize listening socket
+     */
     listenfd = open_listenfd(cf.port);
     rc = make_socket_non_blocking(listenfd);
     check(rc == 0, "make_socket_non_blocking");
@@ -130,7 +130,7 @@ int main(int argc, char *argv[])
                 log_info("#--ferver(fd %d) ready to accept--", listenfd);
                 int infd = accept(listenfd, (struct sockaddr *)&clientaddr, &inlen);
                 if (infd == -1) {
-                    if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
                         log_info("the socket(listenfd %d) is marked nonblocking and no connections are present to be accepted", listenfd);
                         break;
                     } else {
@@ -149,9 +149,9 @@ int main(int argc, char *argv[])
                 fv_epoll_add(epfd, infd, &event);
                 log_info("#--end accept--");
             } else {
-                if ((events[i].events & EPOLLERR) ||
-                        (events[i].events & EPOLLERR) ||
-                        (!(events[i].events & EPOLLIN))) {
+                if (events[i].events & EPOLLERR ||
+                        events[i].events & EPOLLERR ||
+                        !(events[i].events & EPOLLIN)) {
                     log_err("epoll error(fd %d)", fd);
                     close(fd);
                     continue;

@@ -44,7 +44,7 @@ ssize_t rio_writen(int fd, void *usrbuf, size_t n)
                 nwritten = 0;
             else
             {
-                log_err("errno == %d\n", errno);
+                log_err("write err");
                 return -1; /* errorno set by write() */
             }
         }

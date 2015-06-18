@@ -28,10 +28,10 @@ typedef struct fv_http_request_s {
     void *pos, *last;           // change from int pos, last;
     int state;
     void *request_start;
-    void *method_end;           // method_end not included
+    void *method_end;
     int method;
     void *uri_start;
-    void *uri_end;              // uri_end not included
+    void *uri_end;
     void *path_start;
     void *path_end;
     void *query_start;

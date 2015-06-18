@@ -1,7 +1,7 @@
 ferver
 =============
 
-First thing: Thanks so much to [Zhu Jiashun][1], all codes come from [zyearn/zaver][1].
+First thing: Thanks so much to [Zhu Jiashun][1], all codes come from [zyearn/zaver][2].
 For having a deeper understanding of network programming under linux I input and debug these codes line by line referring to his commit logs.
 
 

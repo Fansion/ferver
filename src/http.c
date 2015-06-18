@@ -156,7 +156,7 @@ void do_request(void *ptr)
         }
         if (n < 0) {
             if (errno != EAGAIN) {
-                log_err("read err, and errno = %d", errno);
+                log_err("read err");
                 goto err;
             }
             goto close;     // errno == EAGAIN
@@ -173,7 +173,7 @@ void do_request(void *ptr)
         if (rc == FV_AGAIN) {
             continue;
         } else if (rc != FV_OK) {
-            log_err("rc != FV_OK, and errno = %d", errno);
+            log_err("rc != FV_OK");
             goto err;
         }
         log_info("request method: %.*s", (int)(r->method_end - r->request_start), (char *)r->request_start);
@@ -190,7 +190,7 @@ void do_request(void *ptr)
         if (rc == FV_AGAIN) {
             continue;
         } else if (rc != FV_OK) {
-            log_err("rc != FV_OK, and errno = %d", errno);
+            log_err("rc != FV_OK");
             goto err;
         }
         log_info("## parse request body suc");
@@ -234,5 +234,6 @@ err:
     log_info("err when serve fd %d, ready to close", fd);
 close:
     close(fd);
-log_info("#--serve client(fd %d) err--", fd);
+
+    log_info("#--serve client(fd %d) err--", fd);
 }
