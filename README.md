@@ -7,8 +7,9 @@ For having a deeper understanding of network programming under linux I input and
 
 ###Programming model
 
- - epoll (non-blocking IO)
  - threadpoll
+ - non-blocking IO
+ - 事件驱动/循环(epoll)
 
 ###Support
 
