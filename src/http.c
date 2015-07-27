@@ -1,7 +1,7 @@
 #include "http.h"
 #include <strings.h>
 
-static void parse_uri(char *uri, int length, char *filename, char *querystring);
+static void parse_uri(char *root, char *uri, int length, char *filename);
 static const char *get_file_type(const char *type);
 static void serve_static(int fd, char *filename, int filesize, fv_http_out_t *out);
 static void do_error(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
@@ -29,7 +29,7 @@ mime_type_t ferver_mime[] =
     {NULL , "text/plain"}
 };
 
-void parse_uri(char *uri, int uri_length,  char *filename, char *querystring)
+void parse_uri(char *root, char *uri, int uri_length,  char *filename)
 {
     char *question_mark = index(uri, '?');
     int file_length;
@@ -39,7 +39,7 @@ void parse_uri(char *uri, int uri_length,  char *filename, char *querystring)
         file_length = uri_length;
     }
 
-    strcpy(filename, ROOT);
+    strcpy(filename, root);
     strncat(filename, uri, file_length);
 
     char *last_dot = rindex(filename, '.');
@@ -151,7 +151,11 @@ void do_request(void *ptr)
         // log_info("buffer remaining: %d", (uint32_t)r->buf + MAX_BUF - (uint32_t)r->last);
         // log_info("n = %d, errno = %d", n, errno);
         if (n == 0) {       // EOF
-            log_info("read return 0, ready to close fd %d", fd);
+            //当server和浏览器保持着一个长连接的时候，浏览器突然被关闭了
+            //此时该fd在事件循环里会返回一个可读事件，然后就被分配给了某个
+            //线程，该线程read会返回0，代表对方已关闭这个fd，于是server
+            //端也调用close
+            log_info("read return 0");
             goto close;
         }
         if (n < 0) {
@@ -159,7 +163,7 @@ void do_request(void *ptr)
                 log_err("read err");
                 goto err;
             }
-            goto close;     // errno == EAGAIN
+            break;     // errno == EAGAIN
         }
         r->last += n;
         check((uint32_t)r->last <= (uint32_t)r->buf + MAX_BUF, "r->last shoule <= MAX_BUF");
@@ -168,7 +172,7 @@ void do_request(void *ptr)
         log_info("enter fv_http_parse_request_line, buf start addr=%d, last addr=%d", (int)r->pos, (int)r->last);
         tmp = (int)r->pos;
         rc = fv_http_parse_request_line(r);
-        log_info("header length=%d", (int)r->pos-tmp);
+        log_info("header length=%d", (int)r->pos - tmp);
 
         if (rc == FV_AGAIN) {
             continue;
@@ -185,7 +189,7 @@ void do_request(void *ptr)
         log_info("enter fv_http_parse_request_body, buf start addr=%d, last addr=%d", (int)r->pos, (int)r->last);
         tmp = (int)r->pos;
         rc = fv_http_parse_request_body(r);
-        log_info("body length=%d", (int)r->pos-tmp);
+        log_info("body length=%d", (int)r->pos - tmp);
 
         if (rc == FV_AGAIN) {
             continue;
@@ -199,15 +203,15 @@ void do_request(void *ptr)
         rc = fv_init_out_t(out, fd);
         check(rc == FV_OK, "fv_init_out_t");
 
-        parse_uri(r->uri_start, r->uri_end - r->uri_start, filename, NULL);
+        parse_uri((char *)r->root, r->uri_start, r->uri_end - r->uri_start, filename);
         if (stat(filename, &sbuf) < 0) {
             do_error(fd, filename, "404", "Not Found", "ferver can't find the file");
-            goto close;
+            goto done;
         }
 
         if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
             do_error(fd, filename, "403", "Forbidden", "ferver can't read the file");
-            goto close;
+            goto done;
         }
 
         out->mtime = sbuf.st_mtime;
@@ -233,7 +237,8 @@ void do_request(void *ptr)
 err:
     log_info("err when serve fd %d, ready to close", fd);
 close:
+    log_info("close fd %d", fd);
     close(fd);
-
-    log_info("#--serve client(fd %d) err--", fd);
+done:
+    log_info("#--serve client(fd %d) suc--", fd);
 }
