@@ -98,6 +98,7 @@ int main(int argc, char *argv[])
      *initialize listening socket
      */
     listenfd = open_listenfd(cf.port);
+    check(listenfd != -1, "open_listenfd");
     rc = make_socket_non_blocking(listenfd);
     check(rc == 0, "make_socket_non_blocking");
     /*
@@ -150,7 +151,7 @@ int main(int argc, char *argv[])
                 log_info("#--end accept--");
             } else {
                 if (events[i].events & EPOLLERR ||
-                        events[i].events & EPOLLERR ||
+                        events[i].events & EPOLLHUP ||
                         !(events[i].events & EPOLLIN)) {
                     log_err("epoll error(fd %d)", fd);
                     close(fd);

@@ -211,6 +211,13 @@ int threadpool_free(fv_threadpool_t *pool)
     {
         return fv_tp_invalid;
     }
+    /* pool->head is a dummy head */
+    fv_task_t *cur = pool->head->next, *pre;
+    while (cur) {
+        pre = cur;
+        cur = cur->next;
+        free(pre);
+    }
     if (pool->threads) {
         free(pool->threads);
         free(pool->head);
@@ -220,13 +227,6 @@ int threadpool_free(fv_threadpool_t *pool)
         pthread_mutex_lock(&(pool->lock));
         pthread_mutex_destroy(&(pool->lock));
         pthread_cond_destroy(&(pool->cond));
-    }
-    /* pool->head is a dummy head */
-    fv_task_t *cur = pool->head->next, *pre;
-    while (cur) {
-        pre = cur;
-        cur = cur->next;
-        free(pre);
     }
     free(pool);
     return 0;

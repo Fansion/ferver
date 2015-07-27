@@ -1,4 +1,4 @@
-#include "../src/threadpool.h"
+#include "threadpool.h"
 
 static void sum_n(void *arg)
 {
